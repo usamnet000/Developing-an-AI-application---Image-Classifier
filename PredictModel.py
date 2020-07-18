@@ -36,18 +36,20 @@ class PredictModel:
         # make it set itself to the specified device above
         self.model.to(device)
         
-    def predict(self,image, device, top_k):
+    def predict(self,processimage, device, top_k):
         # puts model in evaluation mode
         # instead of (default)training mode 
         self.model.to(device)
         self.model.eval()
         
-        # Process image to have a fitting input
-        image_torch = torch.from_numpy(image).type(torch.FloatTensor).unsqueeze(dim = 0)
-        image_predict = image_torch.to(device)
-        # or image_torch=torch.tensor(ImageProssing.processImage()).float().unsqueeze(dim =0).type(torch.FloatTensor).to(device)
-        # or image_torch = torch.from_numpy(np.expand_dims(ImageProssing.processImage(), 
+        # convert to FloatTensor
+        tensor_torch = torch.from_numpy(processimage).type(torch.FloatTensor).unsqueeze(dim = 0)
+        image_predict = tensor_torch.to(device)
+        # or 
+        # tensor_torch=torch.tensor(ImageProssing.processImage()).float().unsqueeze(dim =0).type(torch.FloatTensor).to(device)
+        # or tensor_torch = torch.from_numpy(np.expand_dims(ImageProssing.processImage(), 
                                                   #axis=0)).type(torch.FloatTensor).to(device) 
+        # tensor_img = torch.from_numpy(processimage).float().unsqueeze_(dim=0)
         
         # Turn off gradients to speed up this part      
         with torch.no_grad():
@@ -55,29 +57,39 @@ class PredictModel:
             ps = torch.exp(logps) # Take the exponent to get the actual possibilities
             
             #Top 5 predictions and labels
-            top_probs, top_class = ps.topk(top_k, dim = 1) # Returns the highest probability of correct prediction of a class given the image
+            top_probs, top_classes = ps.topk(top_k, dim = 1) # Returns the highest probability of correct prediction of a class given the image
             
             # Convert to classes
-            probs = top_probs.cpu().numpy()[0]
-            top_class = top_class.cpu().numpy()[0]
+            if torch.cuda.is_available() and device:
+                probs= top_probs.cpu()
+                top_classes= top_classes.cpu()
+            probs = probs.numpy()[0]
+            top_classes = top_classes.numpy()[0]
+            #or
+            # probs = top_probs.cpu().numpy()[0]
+            #top_classes = top_classes.cpu().numpy()[0]
             class_to_idx = {lab: num for num, lab in self.model.class_to_idx.items()}
-            classes = [class_to_idx[label] for label in top_class]
+            classes = [class_to_idx[label] for label in top_classes]
             # or top_class = np.array(top_class.detach())[0]   
             # classes = [class_to_idx[label] for label in top_class]
+
+            
+            # or classes = []
+            #for flower in top_classes:
+                #for key, value in self.model.class_to_idx.items():
+                    #if value == flower:
+                        #classes.append(key)
         
         #top_fl = [cat_to_name[label] for label in top_labels]
         
         return probs, classes
 
-    def displayProbability(self,probs, classes,path):
-        """
-        Converts two lists into a dictionary to display on screen
-        """
-        with open(path, 'r') as f:
+    def displayProbability(self,probs, classes,cat_names_path):
+        with open(cat_names_path, 'r') as f:
             cat_to_name = json.load(f)
-            flower = [cat_to_name[f] for f in classes] 
+            class_names = [cat_to_name[name] for name in classes] 
         count = 1
-        for title, prob in zip(flower, probs):
-            print ("Prediction {}: Flower: {} Probability: {}". format(count, title.title(),prob))
+        for name, prob in zip(class_names, probs):
+            print('{}: {} :{}'.format(count, name.title(),prob))
             count += 1
             

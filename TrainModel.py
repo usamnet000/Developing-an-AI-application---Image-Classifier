@@ -2,6 +2,7 @@ import os
 import torch
 from torch import nn, optim
 import torch.nn.functional as F
+from torch.autograd import Variable
 from torchvision import datasets, models, transforms
 
 import numpy as np
@@ -83,59 +84,53 @@ class TrainModel:
         return criterion, optimizer
 
     # Measuring performance in the test dataset The goal of validation is to measure the performance of our model
-    def validation(self,running_loss,epoch,epochs,steps,validloader,device,criterion):
-        #Make a validation step after every 20 iterations
+    def validation(self,i,epoch,epochs,validloader,device,criterion,train_loss):
+        # Make a validation step after every 20 iterations
         step_every = 20
-        if steps % step_every == 0:
-            test_loss = 0
-            valid_accuracy  = 0
-
+        if i % step_every == 0:
+            test_loss= 0
+            valid_accuracy= 0
             # puts model in evaluation mode
             # instead of (default)training mode
             # When we try to make forecasts with our network, we want all of our units to be available so we want to stop the leak when we check validation
-            self.model.eval()
+            self.model.eval()  
             
-            for imagesval, labelsval in validloader: 
+            for imagesval, labelsval in validloader:
                 imagesval, labelsval = imagesval.to(device) , labelsval.to(device)  
                 
-                # Turn off gradients to speed up this part
-                # As for validation, we will not conduct any training, so we will not need to be graduated
                 with torch.no_grad(): 
                     outputs = self.model.forward(imagesval) # now to see the image output to predicted in Validation 
-                    test_loss = criterion(outputs,labelsval)
-                    ps = torch.exp(outputs).data # Take the exponent to get the actual possibilities
+                    loss = criterion(outputs,labelsval)
+                    test_loss+= loss.item() 
+                    ps = torch.exp(outputs) # Take the exponent to get the actual possibilities
                     # Validation by compare labels and highest probability of correct prediction of a class given the image
-                    equals = (labelsval.data == ps.max(1)[1]) # you can use topk instead max 
+                    top_ps, top_class = ps.topk(1, dim=1) # you can use max instead topk 
+                    # compare highest probability indices with expected indices 
+                    matches= top_class == labelsval.view(*top_class.shape)
+                    # matches = (labelsval.data == ps.max(1)[1])
                     # convert to FloatTensor to work and Calculate mean
-                    valid_accuracy += equals.type_as(torch.FloatTensor()).mean() # Accuracy is the number of correct classifications that we made during the previous step(ones) to make our model compare to all expectations
+                    valid_accuracy += matches.type_as(torch.FloatTensor()).mean() # Accuracy is the number of correct classifications that we made during the previous step(ones) to make our model compare to all expectations
                     
-            # Calculating the training loss, validation loss and accuracy
-            test_loss /= len(validloader)
-            valid_accuracy /= len(validloader)
-            train_loss = running_loss/step_every # show in result loss start decrease
-            running_loss = 0
 
-            # print our results so far
             print("Epoch {}/{}  Training Loss: {:.3f}  Validation Loss: {:.3f}  Valid Accuracy : {:.2f}%".format((epoch + 1), 
-                    epochs, train_loss, test_loss, valid_accuracy  * 100))
-        
+                    epochs, train_loss/step_every, test_loss/len(validloader), (valid_accuracy/len(validloader))* 100))
+ 
+         
+          
     def training(self,epochs, device, trainloader, validloader, criterion, optimizer):
         # Measures total program runtime by collecting start time
         from time import time, sleep
         start_time = time()
-
+        train_loss= 0
         print("training ...")
         
         #Each pass through a whole training dataset is called epoch
-        for epoch in range(epochs): 
-            steps = 0
-            running_loss = 0 # after calculte loss we can track loss and log
-            print("Epoch", epoch +1)
-            
+        for epoch in range(epochs):
             # Training the classifier
-            for images, labels in trainloader:  # to get images and labels in trainloader
-                steps += 1 
-                self.model.train()
+            for i, (images, labels) in enumerate(trainloader):# to get images and labels in trainloader
+                images = Variable(images)
+                labels = Variable(labels)
+                
                 images, labels = images.to(device), labels.to(device) 
                 
                 # The training permit has four different steps
@@ -147,9 +142,12 @@ class TrainModel:
                 loss.backward() # generate weight grad values to use it in train network 
                 optimizer.step() # if pass optimizer step the weights is change 
                 
-                running_loss += loss.item() # get loss
-                self.validation(running_loss,epoch,epochs,steps,validloader,device,criterion)
-                
+                train_loss += loss.item()
+
+                self.validation(i,epoch,epochs,validloader,device,criterion,train_loss)
+                # return training mode 
+                self.model.train() 
+
         # Measure total program runtime by collecting end time
         end_time = time()
         
@@ -160,6 +158,9 @@ class TrainModel:
         str(int((tot_time/3600)))+":"+str(int((tot_time%3600)/60))+":"
         +str(int((tot_time%3600)%60)) ) 
 
+
+
+        
     def save(self,filepath, train_image_datasets, optimizer,model_name):
         self.model.class_to_idx = train_image_datasets.class_to_idx     
         checkpoint = {'input size': 25088,
@@ -173,10 +174,6 @@ class TrainModel:
         if not os.path.exists(filepath):
             os.makedirs(filepath)
         os.path.join(filepath, 'checkpoint.pth')
-        
-        # Saving the model
-        store = "{}checkpoint.pth".format(filepath)
-        torch.save(checkpoint, store)
-        print("saved model checkpoint ", store)
-        
-        return store
+        torch.save(checkpoint, "{}checkpoint.pth".format(filepath))
+        print("saved model checkpoint")
+
