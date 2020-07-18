@@ -1,149 +1,94 @@
 # Predict the flower class
+import datetime
 import argparse
-import torch
-from torchvision import models
-import numpy as np
-from PIL import Image
-from torchvision import transforms
-import json
 
-# Functions to predict the flower class from an image
-def load_checkpoint(device, filepath, architecture):
-    
-    '''
-    Input : device, filepath, architecture
-    Operation : Loads previously saved model for further predictions
-    Output : Saved model
-    '''
-    if torch.cuda.is_available():
-        map_location = lambda storage, loc: storage.cuda()
-    else:
-        map_location = 'cpu'
-    
-    
-    checkpoint = torch.load(filepath, map_location = map_location)
-    
-    architecture = architecture.replace("",'')
-    model = getattr(models, architecture)(pretrained = True)
-    epochs = checkpoint['epochs']
-    model.classifier = checkpoint['classifier']
-    model.load_state_dict(checkpoint['state_dict'])
-    model.class_to_idx = checkpoint['class_to_idx']
-    optimizer = checkpoint['optimizer']
-    
-    # set the vgg parameters to remain unchanged
-    for param in model.parameters():
-        param.requires_grad = False
-    
-    # make code agnostic: uses GPU (cuda) if available, otherwise cpu
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
-    # make it set itself to the specified device above
-    model.to(device)
-    
-    return model
+from Parameters import Parameters
+from ImageProssing import ImageProssing
+from PredictModel import PredictModel
 
+def command(string):
+    return str (input( string ))
 
-def preprocess_image(image_path):
-    ''' 
-    Input: image_path
-    Operations: preprocesses the image to use as input for the model: crops, scales and normalizes the image
-    Output: np.array of image    
-    '''
-        # TODO: Process a PIL image for use in a PyTorch model
-    pil_im = Image.open(image_path)
-    transform = transforms.Compose([transforms.Resize(256),
-                                    transforms.CenterCrop(224),
-                                    transforms.ToTensor(),
-                                    transforms.Normalize([0.485, 0.456, 0.406],
-                                                         [0.229, 0.224, 0.225])])
-    transformed_im = transform(pil_im)
-    np_image = np.array(transformed_im)
-    np_image.transpose((2, 0, 1))
-    return np_image
+def greetUser():
+    currentH = int( datetime.datetime.now().hour )
+    if currentH >= 0 and currentH < 12:
+        print( 'Good Morning!' )
 
+    if currentH >= 12 and currentH < 18:
+        print( 'Good Afternoon!' )
 
-
-def predict(image, device, model, top_k):
-    ''' 
-    Input: Image_path, model, topk=5
-    Predict the class (or classes) of an image using a trained deep learning model.
-    Output: Pobablilty/Class Label/Index of 5 highest predicted classes 
-    '''
-    
-        # Process image to have a fitting input
-    
-    image_np = torch.from_numpy(image).type(torch.FloatTensor).unsqueeze(dim = 0)
-    
-    # Get probabilities for input
-    
-    model.to(device)
-    image_predict = image_np.to(device)
-                    
-    with torch.no_grad():
+    if currentH >= 18 and currentH != 0:
+        print( 'Good Evening!' )
         
-        model.eval()
-        
-        logps = model.forward(image_predict)
-        ps = torch.exp(logps)
-        top_probs, top_class = ps.topk(top_k, dim = 1)
-        
-        probs = top_probs.cpu().numpy()[0]
-        top_class = top_class.cpu().numpy()[0]
-        class_to_idx = {lab: num for num, lab in model.class_to_idx.items()}
-        classes = [class_to_idx[i] for i in top_class]
-    
-    return probs, classes
-
-def output(image_path, dictionary, probs, classes):
-    
-    '''
-    Input: image_path, dictionary, probs, classes
-    Operation: Gives a prediction output of flower class and prediction percentage
-    Output: none
-    '''
-    with open(dictionary, 'r') as f:
-        
-        cat_to_name = json.load(f)
-    
-        flower = [cat_to_name[f] for f in classes]
-    
-    probs *= 100
-
-    count = 1
-    for title, prob in zip(flower, probs):
-        print ("\n Prediction {}: {} {:.2f}%". format(count, title.title(), prob))
-        count += 1
-        
-    return
-        
+# This function retrieves 5 Command Line Arugments from user as input from
+# the user running the program from a terminal window. This function returns
+# the collection of these command line arguments from the function call as
+# the variable in_arg 
 parser = argparse.ArgumentParser()
 parser.add_argument('--imagefilepath', type = str, help = 'image path, to predict its flower class')
 parser.add_argument('--checkpoint', type = str, default = 'SavedModel/checkpoint.pth', help = 'directory to load trained model | (default = SavedModel/checkpoint.pth)')
-parser.add_argument('--arch', type = str, default = 'vgg19', help = 'which CNN Model should be used for pretraining, your choose between vgg13, vgg16, vgg19, densenet121, densenet161, alexnet | (default = vgg19)')
 
-parser.add_argument('--top_k', type = int, default = 3, help = 'how many flower class predictions should be made for the picture | (default = 3)')
+parser.add_argument('--top_k', type = int, default = 5, help = 'how many flower class predictions should be made for the picture | (default = 5)')
 parser.add_argument('--category_names', type = str, default = 'cat_to_name.json' , help = 'file for flower name dictionary | (default = cat_to_name.json)')
 parser.add_argument('--gpu', type = str, default = 'cuda', help = 'cuda or cpu | (default = cuda)')
 
+arg_in = parser.parse_args()
+parameters = Parameters({"imagefilepath":arg_in.imagefilepath,"checkpoint":arg_in.checkpoint,"top_k":arg_in.top_k,"category_names":arg_in.category_names,"gpu":arg_in.gpu})
 
-args = parser.parse_args()
-
-# Run functions from functions_predict.py
-
-print("\n Selection: Predicting the image {}: \n Giving a prediction of the {} most likely flower classes \n Using {} file as dictionary for flower classes \n The prediction is performed in {} mode \n".format(args.imagefilepath, args.top_k, args.category_names, args.gpu))
+# Function that greet user
+greetUser()
+# Function that checks command line arguments using in_arg  
+parameters.displayParameters('predict')
 
 # Ask for image filepath to make predictions
-if not args.imagefilepath:
-    args.imagefilepath = str(input("Enter the image path, to predict its flower class \n e.g. flowers/test/101/image_07949.jpg \n Your input:"))
-
-model = load_checkpoint(args.gpu, args.checkpoint, args.arch)
-
-image = preprocess_image(args.imagefilepath)
-
-probs, classes = predict(image, args.gpu, model, args.top_k)
-
-output(args.imagefilepath, args.category_names, probs, classes)
-
-
-
+if not parameters.in_arg['imagefilepath']:
+    parameters.in_arg['imagefilepath'] = command("Enter the image path, to predict its flower class \n e.g. flowers/test/101/image_07949.jpg \n Your input:")
+print( 'Do you want to modify input values?' )
+while True:
+    print('‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡')
+    print("## What you Want modify?                 ##")
+    print("## 0 : modify a imagefilepath            ##")
+    print("## 1 : modify a checkpoint               ##")
+    print("## 2 : modify a top_k                    ##")
+    print("## 3 : modify a {} location file for flower name dictionary##".format(arg_in.category_names))
+    print("## 4 : modify a mode(s)                  ##")
+    print("## 5 : Print Parameters                  ##")
+    print("## 6 : predict                           ##")
+    print("## 7 : exit                              ##")
+    print('‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡‡')
+    query = int(command("command: "))
+    if query == 0 :
+        query = command("enter image file path, the defualt ({})".format(parameters.in_arg['imagefilepath']))
+        parameters.in_arg['imagefilepath'] = query
+    elif query == 1 :
+        query = command("enter checkpoint path, the defualt ({})".format(parameters.in_arg['checkpoint']))
+        parameters.in_arg['checkpoint'] = query
+    elif query == 2:
+        while True:
+            query = command("enter top_k, the defualt ({})".format(parameters.in_arg['top_k']))
+            if query.isdigit():
+                parameters.in_arg['top_k'] = query
+                break
+    elif query == 3 :
+        query = command("enter category names path, the defualt ({})".format(parameters.in_arg['category_names']))
+        parameters.in_arg['category_names'] = query
+    elif query == 4:
+        while True:
+            query = command("enter cuda or cpu , the defualt ({})".format(parameters.in_arg['gpu']))
+            if query not in ["cuda", "cpu"]:
+                print("Try again! Please give a valid processor. \nValid processor: cuda, cpu")
+                query = command("command: ")
+            else:
+                parameters.in_arg['gpu'] = query
+                break
+    elif query == 5:
+        parameters.displayParameters('predict')
+    elif query == 6:
+        pm = PredictModel()
+        pm.loadCheckPoint(parameters.in_arg['gpu'], parameters.in_arg['checkpoint'])
+        im = ImageProssing(parameters.in_arg['imagefilepath'])
+        image = im.processImage() 
+        probs, classes = pm.predict(image,parameters.in_arg['gpu'],parameters.in_arg['top_k'])
+        pm.displayProbability(probs, classes,parameters.in_arg['category_names'])
+    elif query == 7:
+        break
