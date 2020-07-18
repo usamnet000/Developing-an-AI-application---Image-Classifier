@@ -129,7 +129,7 @@ class TrainModel:
         #Each pass through a whole training dataset is called epoch
         for epoch in range(epochs): 
             steps = 0
-            running_loss = 0 # after calculte loss we can track loss and logged
+            running_loss = 0 # after calculte loss we can track loss and log
             print("Epoch", epoch +1)
             
             # Training the classifier
