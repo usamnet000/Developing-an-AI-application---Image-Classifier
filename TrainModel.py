@@ -42,8 +42,8 @@ class TrainModel:
         # TODO: Using the image datasets and the trainforms, define the dataloaders
         # # after download datasets is load dataset
         traindataloader = torch.utils.data.DataLoader(train_image_datasets, batch_size=64, shuffle=True) # get 64 image and label for traindataloader
-        validdataloader = torch.utils.data.DataLoader(valid_image_datasets, batch_size=64)
-        testdataloader = torch.utils.data.DataLoader(test_image_datasets, batch_size=64)   
+        validdataloader = torch.utils.data.DataLoader(valid_image_datasets, batch_size=64, shuffle=True)
+        testdataloader = torch.utils.data.DataLoader(test_image_datasets, batch_size=8, shuffle=True)   
         
         return traindataloader, validdataloader, train_image_datasets
 
